@@ -316,9 +316,8 @@ account or commercial dataset is required to build, run or demonstrate it.
 - **Not a compliance system.** No statutory GST return filing, no e-invoicing, no
   narcotics register. Schedule categories are recorded but not enforced against a
   prescription.
-- **Some screens are still placeholders.** Sales History, Returns, Customers, the four
-  Analytics pages and Settings are routed to an honest placeholder; their APIs are
-  complete and tested.
+- **Analytics is descriptive, not predictive.** Every screen reports what happened;
+  none forecasts what will.
 
 ---
 

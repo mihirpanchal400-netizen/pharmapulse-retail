@@ -1,7 +1,7 @@
 import { getDb } from '../database/connection';
 import { notFound } from '../utils/errors';
 import { paginate, type Paged } from './inventoryService';
-import { round2 } from '../utils/money';
+import { round2, safeDiv } from '../utils/money';
 import type { CustomerRow } from '../types';
 
 /**
@@ -89,14 +89,50 @@ export function deleteCustomer(id: number): void {
   getDb().prepare('DELETE FROM customers WHERE id = ?').run(id);
 }
 
+/**
+ * A customer with their purchase history and headline figures.
+ *
+ * Returns the customer alongside the sales rather than a bare array, because
+ * every caller needs both and a second round-trip to fetch the name is waste.
+ * `paid_amount` is included so the caller can show an outstanding balance
+ * without recomputing it from the payments table.
+ */
 export function getCustomerHistory(id: number) {
-  getCustomer(id);
-  return getDb()
+  const customer = getCustomer(id);
+
+  const sales = getDb()
     .prepare(
-      `SELECT id, invoice_number, sale_date, total, payment_method, status
-       FROM sales WHERE customer_id = ? ORDER BY sale_date DESC LIMIT 100`,
+      `SELECT s.id, s.invoice_number, s.sale_date, s.total, s.paid_amount,
+              s.payment_method, s.status, s.due_date,
+              (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id) AS item_count
+       FROM sales s
+       WHERE s.customer_id = ?
+       ORDER BY s.sale_date DESC
+       LIMIT 200`,
     )
-    .all(id);
+    .all(id) as {
+    id: number;
+    total: number;
+    paid_amount: number;
+    status: string;
+  }[];
+
+  // Cancelled bills are excluded from the money figures but stay in the list,
+  // because the pharmacist still needs to see that they happened.
+  const live = sales.filter((sale) => sale.status !== 'CANCELLED');
+  const totalSpent = live.reduce((sum, sale) => sum + sale.total, 0);
+  const outstanding = live.reduce((sum, sale) => sum + Math.max(0, sale.total - sale.paid_amount), 0);
+
+  return {
+    customer,
+    sales,
+    summary: {
+      purchases: live.length,
+      totalSpent: round2(totalSpent),
+      outstanding: round2(outstanding),
+      averageBill: round2(safeDiv(totalSpent, live.length)),
+    },
+  };
 }
 
 function nextCustomerCode(): string {

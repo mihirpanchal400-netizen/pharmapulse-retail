@@ -8,15 +8,25 @@ import Dashboard from './pages/Dashboard';
 import MiniAnalyst from './pages/MiniAnalyst';
 import Pos from './pages/Pos';
 import Reports from './pages/Reports';
+import Returns from './pages/Returns';
+import PurchaseReturns from './pages/PurchaseReturns';
+import Settings from './pages/Settings';
 import Replenishment from './pages/Replenishment';
 import SupplierComparison from './pages/SupplierComparison';
 import ProcurementCart from './pages/ProcurementCart';
-import ComingSoon from './pages/ComingSoon';
 import { ProductList, ProductDetail } from './pages/Products';
+import { SalesHistory, InvoiceView } from './pages/Sales';
 import { CurrentStock, Batches, Expiry } from './pages/Inventory';
 import { DistributorNetwork, DistributorDetail } from './pages/Distributors';
 import { PurchaseOrderList, PurchaseOrderDetail } from './pages/PurchaseOrders';
 import { SupplierOutstanding, CustomerOutstanding } from './pages/Outstanding';
+import { CustomerList, CustomerDetail } from './pages/Customers';
+import {
+  SalesAnalytics,
+  ProductAnalytics,
+  InventoryAnalytics,
+  ProfitAnalytics,
+} from './pages/Analytics';
 
 /**
  * Routing.
@@ -49,15 +59,11 @@ function Gate() {
         <Route path="/mini-analyst" element={<MiniAnalyst />} />
 
         {/* ------------------------------------------------------------ Sales */}
+        <Route path="/sales" element={<SalesHistory />} />
         <Route path="/sales/new" element={<Pos />} />
-        <Route
-          path="/sales"
-          element={<ComingSoon title="Sales History" subtitle="Every invoice, searchable and filterable" />}
-        />
-        <Route
-          path="/sales/returns"
-          element={<ComingSoon title="Sales Returns" subtitle="Return against an existing invoice" />}
-        />
+        <Route path="/sales/returns" element={<Returns />} />
+        {/* Kept last: a bare :id must not shadow /new or /returns. */}
+        <Route path="/sales/:id" element={<InvoiceView />} />
 
         {/* -------------------------------------------------------- Inventory */}
         <Route path="/inventory" element={<CurrentStock />} />
@@ -79,45 +85,26 @@ function Gate() {
         <Route path="/procurement/orders" element={<PurchaseOrderList />} />
         <Route path="/procurement/orders/:id" element={<PurchaseOrderDetail />} />
         <Route path="/procurement/outstanding" element={<SupplierOutstanding />} />
-        <Route
-          path="/procurement/returns"
-          element={<ComingSoon title="Purchase Returns" subtitle="Return stock to a distributor for credit" />}
-        />
+        <Route path="/procurement/returns" element={<PurchaseReturns />} />
         {/* Legacy paths from the pre-procurement build. */}
         <Route path="/purchases" element={<Navigate to="/procurement/orders" replace />} />
         <Route path="/purchases/new" element={<Navigate to="/procurement/replenishment" replace />} />
         <Route path="/purchases/suppliers" element={<Navigate to="/procurement/distributors" replace />} />
 
         {/* --------------------------------------------------------- Customers */}
-        <Route
-          path="/customers"
-          element={<ComingSoon title="Customers" subtitle="Customer directory and purchase history" />}
-        />
+        <Route path="/customers" element={<CustomerList />} />
         <Route path="/customers/outstanding" element={<CustomerOutstanding />} />
+        {/* Kept last so a bare :id cannot shadow /outstanding. */}
+        <Route path="/customers/:id" element={<CustomerDetail />} />
 
         {/* --------------------------------------------------------- Analytics */}
-        <Route
-          path="/analytics/sales"
-          element={<ComingSoon title="Sales Analytics" subtitle="Revenue, growth, categories and concentration" />}
-        />
-        <Route
-          path="/analytics/products"
-          element={<ComingSoon title="Product Analytics" subtitle="Performance, velocity, ABC class and dead stock" />}
-        />
-        <Route
-          path="/analytics/inventory"
-          element={<ComingSoon title="Inventory Analytics" subtitle="Turnover, coverage and health" />}
-        />
-        <Route
-          path="/analytics/profit"
-          element={<ComingSoon title="Profit Analytics" subtitle="Margin by category and product" />}
-        />
+        <Route path="/analytics/sales" element={<SalesAnalytics />} />
+        <Route path="/analytics/products" element={<ProductAnalytics />} />
+        <Route path="/analytics/inventory" element={<InventoryAnalytics />} />
+        <Route path="/analytics/profit" element={<ProfitAnalytics />} />
 
         <Route path="/reports" element={<Reports />} />
-        <Route
-          path="/settings"
-          element={<ComingSoon title="Settings" subtitle="Pharmacy profile, analytics thresholds and users" />}
-        />
+        <Route path="/settings" element={<Settings />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

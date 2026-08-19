@@ -100,6 +100,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
           { label: 'Procurement Cart', to: '/procurement/cart' },
           { label: 'Purchase Orders', to: '/procurement/orders' },
           { label: 'Supplier Outstanding', to: '/procurement/outstanding' },
+          { label: 'Purchase Returns', to: '/procurement/returns' },
         ],
       },
       {

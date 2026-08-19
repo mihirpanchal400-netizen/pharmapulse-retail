@@ -9,6 +9,7 @@ import * as outstanding from '../services/outstandingService';
 import { getReplenishmentPlan, getReplenishmentFor } from '../services/replenishmentService';
 import { calculateScheme, optimiseOrderQty } from '../services/schemeService';
 import { listActivity } from '../services/activityService';
+import * as purchaseReturns from '../services/purchaseReturnService';
 
 /**
  * Procurement API: distributor network, catalogues, comparison, purchase
@@ -476,6 +477,94 @@ router.post(
     res.status(201).json(
       outstanding.recordCustomerPayment({
         ...body,
+        user_id: req.user!.id,
+        username: req.user!.username,
+      }),
+    );
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* Purchase returns                                                            */
+/* -------------------------------------------------------------------------- */
+
+const returnableQuerySchema = z.object({
+  search: z.string().optional(),
+  productId: z.coerce.number().int().positive().optional(),
+  expiredOnly: z.coerce.boolean().optional(),
+});
+
+/** Batches with stock on hand that could be sent back to a distributor. */
+router.get(
+  '/returnable-batches',
+  operational,
+  validateQuery(returnableQuerySchema),
+  wrap((req, res) => res.json({ data: purchaseReturns.returnableBatches(query(req)) })),
+);
+
+const purchaseReturnSchema = z.object({
+  distributor_id: z.coerce.number().int().positive().nullish(),
+  purchase_id: z.coerce.number().int().positive().nullish(),
+  reason: z.enum(['EXPIRED', 'DAMAGED', 'WRONG_ITEM', 'EXCESS', 'OTHER']),
+  items: z
+    .array(
+      z.object({
+        batch_id: z.coerce.number().int().positive(),
+        quantity: z.coerce.number().int().positive(),
+      }),
+    )
+    .min(1, 'Select at least one batch to return'),
+  return_date: dateString.optional(),
+  notes: z.string().max(400).nullish(),
+});
+
+const purchaseReturnQuerySchema = z.object({
+  search: z.string().optional(),
+  reason: z.string().optional(),
+  status: z.string().optional(),
+  distributorId: z.coerce.number().int().positive().optional(),
+  ...paging,
+});
+
+router.get(
+  '/purchase-returns',
+  anyRole,
+  validateQuery(purchaseReturnQuerySchema),
+  wrap((req, res) => res.json(purchaseReturns.listPurchaseReturns(query(req)))),
+);
+
+router.post(
+  '/purchase-returns',
+  operational,
+  validateBody(purchaseReturnSchema),
+  wrap((req, res) => {
+    const body = req.body as z.infer<typeof purchaseReturnSchema>;
+    res.status(201).json(
+      purchaseReturns.createPurchaseReturn({
+        ...body,
+        user_id: req.user!.id,
+        username: req.user!.username,
+      }),
+    );
+  }),
+);
+
+router.get(
+  '/purchase-returns/:id',
+  anyRole,
+  wrap((req, res) => res.json(purchaseReturns.getPurchaseReturn(idParam(req)))),
+);
+
+const prStatusSchema = z.object({ status: z.enum(['CREDITED', 'REJECTED']) });
+
+router.patch(
+  '/purchase-returns/:id/status',
+  operational,
+  validateBody(prStatusSchema),
+  wrap((req, res) => {
+    const { status } = req.body as z.infer<typeof prStatusSchema>;
+    res.json(
+      purchaseReturns.updatePurchaseReturnStatus(idParam(req), status, {
         user_id: req.user!.id,
         username: req.user!.username,
       }),
