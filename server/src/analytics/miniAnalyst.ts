@@ -788,7 +788,8 @@ function buildHeadline(insights: Insight[], counts: Record<InsightSeverity, numb
     return 'No issues detected. Stock levels, expiry exposure and margin are all within their configured thresholds.';
   }
   if (counts.CRITICAL > 0) {
-    return `${plural(counts.CRITICAL, 'critical issue')} needs attention today. Highest priority: ${insights[0].title.toLowerCase()}.`;
+    const verb = counts.CRITICAL === 1 ? 'needs' : 'need';
+    return `${plural(counts.CRITICAL, 'critical issue')} ${verb} attention today. Highest priority: ${insights[0].title.toLowerCase()}.`;
   }
   if (counts.HIGH > 0) {
     return `${plural(counts.HIGH, 'high-priority item')} to review this week. Start with: ${insights[0].title.toLowerCase()}.`;

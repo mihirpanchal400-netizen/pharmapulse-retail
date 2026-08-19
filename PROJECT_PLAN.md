@@ -76,17 +76,20 @@ Full detail in [ARCHITECTURE.md](./ARCHITECTURE.md).
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Environment audit, architecture, schema and methodology documents | Complete |
-| 1 | Application foundation — Express API, React shell, routing, layout | Complete |
-| 2 | Database — schema, migrations, synthetic seed generator | Complete |
-| 3 | Products, batches, inventory, low stock, expiry | Complete |
+| 1 | Application foundation — Express API, middleware, auth, routing | Complete |
+| 2 | Database — schema, migrations, synthetic seed generator, backup | Complete |
+| 3 | Products, batches, inventory, low stock, expiry (services + API) | Complete |
 | 4 | Suppliers and purchases (goods inward) | Complete |
-| 5 | Point of sale with FEFO, invoicing, returns | Complete |
+| 5 | Sales with FEFO, invoicing, returns | Complete |
 | 6 | Sales / product / inventory / profit analytics | Complete |
 | 7 | **Mini Analyst rule engine** | Complete |
-| 8 | CSV report exports | Complete |
-| 9 | UI polish — loading, empty and error states, responsive layout | Complete |
-| 10 | Testing — unit and integration, build verification | Complete |
-| 11 | GitHub finalisation — README, licences, documentation | Complete |
+| 8 | CSV report exports (11 reports) | Complete |
+| 9 | React client — layout, dashboard, POS, inventory, analytics screens | **In progress** |
+| 10 | Testing — unit and integration, build verification | **Not started** |
+| 11 | GitHub finalisation — README, screenshots, demo instructions | **In progress** |
+
+Phases 0–8 are verified working: the API type-checks clean and `npm run db:stats`
+confirms the seeded database produces ten ranked Mini Analyst insights from live data.
 
 ## 7. Success criteria
 
@@ -110,21 +113,27 @@ The project is complete when all of the following are demonstrably true:
 The seed generator creates a synthetic dataset with **deliberately planted business
 conditions**, so the Mini Analyst has something real to find:
 
-| Condition | Planted |
+| Condition | Actual (verified via `npm run db:stats`) |
 |---|---|
-| Products | 120 across 10 therapeutic categories |
+| Products | 126 across 12 therapeutic categories |
 | Suppliers | 16 |
-| Customers | 60 |
-| Sales | ~1,200 over 180 days |
-| Purchases | ~210 |
-| Batches | ~330 |
-| Fast movers | ~12 products with high daily velocity |
-| Dead stock | ~14 products with no sale for 90+ days |
-| Low stock | ~18 products below reorder level |
-| Out of stock | ~6 products with active demand and zero stock |
-| Expiring | ~20 batches inside the 90-day window |
-| Already expired | ~5 batches |
-| Growing / declining | Trends built into the last 60 days |
+| Customers | 60 (54 retail, 6 institutional) |
+| Sales | ~12,250 over 180 days (~2,330 in the last 30 days) |
+| Purchases | ~669 goods-inward documents |
+| Batches | ~1,155 |
+| Stock movements | ~29,760 audit rows |
+| Fast movers | 12 products with high daily velocity |
+| Dead stock | 14 products, no sale for 90+ days |
+| Low stock | 19 products below reorder level |
+| Out of stock | 11 products with active demand |
+| Overstocked | 8 products above maximum stock |
+| Expiring within 90 days | 15 batches |
+| Already expired | 6 batches |
+| Category trend | Dermatology growing ~20% period on period |
+| Overall trend | Revenue up ~7% vs the previous 30 days |
+
+The generator is **deterministic** (fixed PRNG seed), so `npm run seed` reproduces the
+same database every time and a rehearsed demo still shows the same numbers on the day.
 
 All of it is generated programmatically. **No real product, supplier, customer,
 prescription or patient data is used anywhere in this project.**

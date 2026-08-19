@@ -13,7 +13,9 @@
     "db:reset": "tsx src/database/reset.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:stats": "tsx src/database/stats.ts",
+    "backup": "tsx src/database/backup.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

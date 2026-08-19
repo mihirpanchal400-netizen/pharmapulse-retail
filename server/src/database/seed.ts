@@ -3,7 +3,7 @@ import path from 'path';
 import { getDb, closeDb } from './connection';
 import { runMigrations } from './migrate';
 import { config } from '../config';
-import { addDays, today, toIsoDate } from '../utils/dates';
+import { addDays, today } from '../utils/dates';
 import { round2 } from '../utils/money';
 import { createPurchase, type PurchaseItemInput } from '../services/purchaseService';
 import { createSale, createReturn, type SaleItemInput } from '../services/saleService';
@@ -285,9 +285,9 @@ function seedProducts(catalog: Catalog, supplierIds: number[]): ProductPlan[] {
   assign(order.slice(0, 12), 'FAST');
   assign(order.slice(12, 24), 'DEAD');
   assign(order.slice(24, 27), 'NEVER_SOLD');
-  assign(order.slice(27, 45), 'LOW');
-  assign(order.slice(45, 51), 'OUT');
-  assign(order.slice(51, 59), 'OVERSTOCK');
+  assign(order.slice(27, 51), 'LOW');
+  assign(order.slice(51, 57), 'OUT');
+  assign(order.slice(57, 65), 'OVERSTOCK');
   // Everything else stays NORMAL.
 
   // ---- build the plans ----------------------------------------------------
@@ -326,8 +326,8 @@ function seedProducts(catalog: Catalog, supplierIds: number[]): ProductPlan[] {
     let trend = 1;
     const roll = rand();
     if (role === 'FAST' && roll < 0.5) trend = between(1.35, 1.8);
-    else if (roll < 0.15) trend = between(1.3, 1.7);
-    else if (roll < 0.3) trend = between(0.45, 0.7);
+    else if (roll < 0.22) trend = between(1.3, 1.7);
+    else if (roll < 0.32) trend = between(0.45, 0.7);
     // Dermatology is deliberately given a growth bias so the category rule has
     // a clear, explainable signal to find.
     if (entry.source.category === 'Dermatology') trend *= between(1.15, 1.35);
@@ -337,7 +337,7 @@ function seedProducts(catalog: Catalog, supplierIds: number[]): ProductPlan[] {
 
     let replenishUntilDay = WINDOW_DAYS - 1;
     if (role === 'OUT') replenishUntilDay = WINDOW_DAYS - 1 - intBetween(22, 38);
-    else if (role === 'LOW') replenishUntilDay = WINDOW_DAYS - 1 - intBetween(12, 20);
+    else if (role === 'LOW') replenishUntilDay = WINDOW_DAYS - 1 - intBetween(6, 14);
     else if (role === 'DEAD' || role === 'NEVER_SOLD') replenishUntilDay = 0;
     else if (role === 'OVERSTOCK') replenishUntilDay = WINDOW_DAYS - 1;
 
@@ -465,8 +465,10 @@ function velocityOn(plan: ProductPlan, dayIndex: number, dateIso: string): numbe
   if (dayIndex > plan.sellsUntilDay) return 0;
   const progress = dayIndex / (WINDOW_DAYS - 1);
   const trended = plan.baseVelocity * (1 + (plan.trend - 1) * progress);
-  // A gentle overall uplift so the business is visibly growing period on period.
-  const businessGrowth = 1 + 0.12 * progress;
+  // Overall uplift so the business is visibly growing period on period. The
+  // trend rule compares the last 30 days with the 30 before, so this has to be
+  // large enough to clear the salesGrowthThresholdPct reporting floor.
+  const businessGrowth = 1 + 0.55 * progress;
   return trended * businessGrowth * weekdayFactor(dateIso);
 }
 
@@ -538,15 +540,15 @@ export function seed(): void {
     .filter((p) => p.role !== 'OUT' && p.role !== 'LOW')
     .sort((a, b) => a.baseVelocity - b.baseVelocity);
 
-  const expiredGroup = slowest.slice(0, 5);
-  const expiringGroup = slowest.slice(5, 27);
+  const expiredGroup = slowest.slice(0, 6);
+  const expiringGroup = slowest.slice(6, 34);
 
   console.log('  Planting expiry exposure...');
   // Bought ~5 months ago with a short remaining shelf life; already lapsed.
   purchaseCount += placePurchases(
     expiredGroup.map((plan) => ({
       plan,
-      quantity: intBetween(15, 45),
+      quantity: intBetween(25, 70),
       expiryDate: addDays(today(), -intBetween(4, 40)),
     })),
     WINDOW_DAYS - 155,
@@ -557,10 +559,10 @@ export function seed(): void {
   purchaseCount += placePurchases(
     expiringGroup.map((plan) => ({
       plan,
-      quantity: intBetween(20, 60),
+      quantity: intBetween(45, 120),
       expiryDate: addDays(today(), intBetween(6, 88)),
     })),
-    WINDOW_DAYS - 30,
+    WINDOW_DAYS - 16,
     adminId,
   );
 
@@ -586,7 +588,11 @@ export function seed(): void {
         // arrives before the reorder alarm rather than after it.
         if (stock > plan.row.reorder_level * 1.6) continue;
 
-        const target = Math.max(plan.row.maximum_stock, Math.ceil(plan.baseVelocity * 30));
+        // Lines destined to end up low are topped up only partially, so their
+        // final replenishment leaves them under the reorder level instead of
+        // restoring them to maximum.
+        const factor = plan.role === 'LOW' ? 0.45 : 1;
+        const target = Math.ceil(Math.max(plan.row.maximum_stock, plan.baseVelocity * 30) * factor);
         const quantity = Math.max(0, target - stock);
         if (quantity > 0) lines.push({ plan, quantity });
       }

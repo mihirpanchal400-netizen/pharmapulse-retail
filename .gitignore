@@ -42,3 +42,6 @@ coverage/
 
 # Exports generated at runtime
 exports/
+
+# Local database backups (npm run backup)
+database/backups/
