@@ -1,11 +1,22 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { CartProvider } from './hooks/useCart';
 import { AppLayout } from './layouts/AppLayout';
 import { Spinner } from './components/ui';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import MiniAnalyst from './pages/MiniAnalyst';
+import Pos from './pages/Pos';
+import Reports from './pages/Reports';
+import Replenishment from './pages/Replenishment';
+import SupplierComparison from './pages/SupplierComparison';
+import ProcurementCart from './pages/ProcurementCart';
 import ComingSoon from './pages/ComingSoon';
+import { ProductList, ProductDetail } from './pages/Products';
+import { CurrentStock, Batches, Expiry } from './pages/Inventory';
+import { DistributorNetwork, DistributorDetail } from './pages/Distributors';
+import { PurchaseOrderList, PurchaseOrderDetail } from './pages/PurchaseOrders';
+import { SupplierOutstanding, CustomerOutstanding } from './pages/Outstanding';
 
 /**
  * Routing.
@@ -37,62 +48,54 @@ function Gate() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/mini-analyst" element={<MiniAnalyst />} />
 
-        {/* Sales */}
+        {/* ------------------------------------------------------------ Sales */}
+        <Route path="/sales/new" element={<Pos />} />
         <Route
           path="/sales"
           element={<ComingSoon title="Sales History" subtitle="Every invoice, searchable and filterable" />}
         />
         <Route
-          path="/sales/new"
-          element={<ComingSoon title="New Sale" subtitle="Point of sale with FEFO batch allocation" />}
-        />
-        <Route
           path="/sales/returns"
-          element={<ComingSoon title="Returns" subtitle="Return against an existing invoice" />}
+          element={<ComingSoon title="Sales Returns" subtitle="Return against an existing invoice" />}
         />
 
-        {/* Inventory */}
-        <Route
-          path="/inventory"
-          element={<ComingSoon title="Current Stock" subtitle="Live stock across every product" />}
-        />
-        <Route
-          path="/inventory/products"
-          element={<ComingSoon title="Products" subtitle="Product catalogue and pricing" />}
-        />
-        <Route
-          path="/inventory/batches"
-          element={<ComingSoon title="Batches" subtitle="Batch register and traceability" />}
-        />
-        <Route
-          path="/inventory/low-stock"
-          element={<ComingSoon title="Low Stock" subtitle="Products at or below reorder level" />}
-        />
-        <Route
-          path="/inventory/expiry"
-          element={<ComingSoon title="Expiry" subtitle="Batches by remaining shelf life" />}
-        />
+        {/* -------------------------------------------------------- Inventory */}
+        <Route path="/inventory" element={<CurrentStock />} />
+        <Route path="/inventory/stock" element={<CurrentStock />} />
+        <Route path="/inventory/products" element={<ProductList />} />
+        <Route path="/inventory/products/:id" element={<ProductDetail />} />
+        <Route path="/inventory/batches" element={<Batches />} />
+        <Route path="/inventory/expiry" element={<Expiry />} />
+        {/* Low stock is the Replenishment Center — the same question, answered
+            with a supplier and a price rather than just a list. */}
+        <Route path="/inventory/low-stock" element={<Navigate to="/procurement/replenishment" replace />} />
 
-        {/* Purchases */}
+        {/* ------------------------------------------------------ Procurement */}
+        <Route path="/procurement/replenishment" element={<Replenishment />} />
+        <Route path="/procurement/compare" element={<SupplierComparison />} />
+        <Route path="/procurement/cart" element={<ProcurementCart />} />
+        <Route path="/procurement/distributors" element={<DistributorNetwork />} />
+        <Route path="/procurement/distributors/:id" element={<DistributorDetail />} />
+        <Route path="/procurement/orders" element={<PurchaseOrderList />} />
+        <Route path="/procurement/orders/:id" element={<PurchaseOrderDetail />} />
+        <Route path="/procurement/outstanding" element={<SupplierOutstanding />} />
         <Route
-          path="/purchases"
-          element={<ComingSoon title="Purchase History" subtitle="Goods inward documents" />}
+          path="/procurement/returns"
+          element={<ComingSoon title="Purchase Returns" subtitle="Return stock to a distributor for credit" />}
         />
-        <Route
-          path="/purchases/new"
-          element={<ComingSoon title="New Purchase" subtitle="Receive stock and create batches" />}
-        />
-        <Route
-          path="/purchases/suppliers"
-          element={<ComingSoon title="Suppliers" subtitle="Supplier directory and purchase summary" />}
-        />
+        {/* Legacy paths from the pre-procurement build. */}
+        <Route path="/purchases" element={<Navigate to="/procurement/orders" replace />} />
+        <Route path="/purchases/new" element={<Navigate to="/procurement/replenishment" replace />} />
+        <Route path="/purchases/suppliers" element={<Navigate to="/procurement/distributors" replace />} />
 
+        {/* --------------------------------------------------------- Customers */}
         <Route
           path="/customers"
           element={<ComingSoon title="Customers" subtitle="Customer directory and purchase history" />}
         />
+        <Route path="/customers/outstanding" element={<CustomerOutstanding />} />
 
-        {/* Analytics */}
+        {/* --------------------------------------------------------- Analytics */}
         <Route
           path="/analytics/sales"
           element={<ComingSoon title="Sales Analytics" subtitle="Revenue, growth, categories and concentration" />}
@@ -110,13 +113,10 @@ function Gate() {
           element={<ComingSoon title="Profit Analytics" subtitle="Margin by category and product" />}
         />
 
-        <Route
-          path="/reports"
-          element={<ComingSoon title="Reports" subtitle="CSV exports for every dataset" />}
-        />
+        <Route path="/reports" element={<Reports />} />
         <Route
           path="/settings"
-          element={<ComingSoon title="Settings" subtitle="Pharmacy profile and analytics thresholds" />}
+          element={<ComingSoon title="Settings" subtitle="Pharmacy profile, analytics thresholds and users" />}
         />
 
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -129,7 +129,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Gate />
+        <CartProvider>
+          <Gate />
+        </CartProvider>
       </AuthProvider>
     </BrowserRouter>
   );

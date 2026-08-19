@@ -4,6 +4,7 @@ import {
   Activity,
   BarChart3,
   Boxes,
+  Building2,
   ChevronDown,
   FileText,
   LayoutDashboard,
@@ -17,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useCart } from '../hooks/useCart';
 import { initials } from '../utils/format';
 import type { Role } from '../types';
 
@@ -45,7 +47,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     ],
   },
   {
-    section: 'Operations',
+    section: 'Counter',
     items: [
       {
         label: 'Sales',
@@ -58,29 +60,54 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ],
       },
       {
-        label: 'Inventory',
+        label: 'Customers',
+        to: '/customers',
+        icon: Users,
+        children: [
+          { label: 'Customer List', to: '/customers' },
+          { label: 'Outstanding', to: '/customers/outstanding' },
+        ],
+      },
+    ],
+  },
+  {
+    section: 'Inventory',
+    items: [
+      {
+        label: 'Stock',
         to: '/inventory',
         icon: Boxes,
         children: [
-          { label: 'Products', to: '/inventory/products' },
           { label: 'Current Stock', to: '/inventory' },
+          { label: 'Products', to: '/inventory/products' },
           { label: 'Batches', to: '/inventory/batches' },
-          { label: 'Low Stock', to: '/inventory/low-stock' },
           { label: 'Expiry', to: '/inventory/expiry' },
         ],
       },
+    ],
+  },
+  {
+    section: 'Procurement',
+    items: [
       {
-        label: 'Purchases',
-        to: '/purchases',
+        label: 'Buying',
+        to: '/procurement/replenishment',
         icon: Truck,
         roles: ['ADMIN', 'PHARMACIST'],
         children: [
-          { label: 'New Purchase', to: '/purchases/new' },
-          { label: 'Purchase History', to: '/purchases' },
-          { label: 'Suppliers', to: '/purchases/suppliers' },
+          { label: 'Replenishment Center', to: '/procurement/replenishment' },
+          { label: 'Supplier Comparison', to: '/procurement/compare' },
+          { label: 'Procurement Cart', to: '/procurement/cart' },
+          { label: 'Purchase Orders', to: '/procurement/orders' },
+          { label: 'Supplier Outstanding', to: '/procurement/outstanding' },
         ],
       },
-      { label: 'Customers', to: '/customers', icon: Users },
+      {
+        label: 'Distributors',
+        to: '/procurement/distributors',
+        icon: Building2,
+        roles: ['ADMIN', 'PHARMACIST'],
+      },
     ],
   },
   {
@@ -108,7 +135,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, profile, logout, can } = useAuth();
+  const { user, profile, logout } = useAuth();
+  const cart = useCart();
   const location = useLocation();
   const [open, setOpen] = useState<string | null>(() => {
     const match = NAV.flatMap((s) => s.items).find(
@@ -218,6 +246,23 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
+
+      {/* procurement cart - visible from every screen */}
+      {cart.count > 0 && (
+        <div className="px-3 pb-2">
+          <NavLink
+            to="/procurement/cart"
+            onClick={onNavigate}
+            className="flex items-center gap-2.5 rounded-lg bg-brand-600/15 px-2.5 py-2 text-sm text-brand-200 transition-colors hover:bg-brand-600/25"
+          >
+            <ShoppingCart className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="flex-1">Procurement cart</span>
+            <span className="rounded-full bg-brand-500 px-1.5 text-xs font-semibold text-white">
+              {cart.count}
+            </span>
+          </NavLink>
+        </div>
+      )}
 
       {/* user */}
       <div className="border-t border-slate-800 p-3">

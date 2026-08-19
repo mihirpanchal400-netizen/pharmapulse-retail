@@ -191,12 +191,14 @@ migration touches those folders and nothing else.
 
 ```
 client/src/
-  api/          typed fetch wrapper; attaches JWT; unwraps errors
-  components/   presentational + layout (Sidebar, KpiCard, DataTable, charts)
-  context/      AuthContext, ToastContext
-  hooks/        useApi, useDebounce
-  pages/        one folder per navigation area
-  lib/          formatting (currency, dates, percentages)
+  services/     typed fetch wrapper; attaches JWT; unwraps errors
+  components/   presentational (ui, DataTable, InsightCard)
+  charts/       Recharts wrappers sharing one axis/tooltip treatment
+  hooks/        useAuth (context), useCart (context), useApi, useDebounced
+  layouts/      AppLayout - sidebar, drawer, top bar
+  pages/        one file per screen; multi-screen areas export several
+  types/        API response shapes mirrored on the client
+  utils/        formatting (currency, dates, percentages)
 ```
 
 State is deliberately kept simple: React Context for auth and toasts, local component
