@@ -80,7 +80,7 @@ export default function MiniAnalyst() {
           <div className="min-w-0">
             <p className="text-sm font-medium leading-relaxed">{data.headline}</p>
             <p className="mt-1 text-xs text-slate-400">
-              14 rules evaluated · {data.insights.length} fired · generated{' '}
+              18 rules evaluated · {data.insights.length} fired · generated{' '}
               {dateTime(data.generatedAt.replace('T', ' ').slice(0, 16))}
             </p>
           </div>

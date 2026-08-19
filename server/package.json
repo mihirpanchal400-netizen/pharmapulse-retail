@@ -15,7 +15,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:stats": "tsx src/database/stats.ts",
-    "backup": "tsx src/database/backup.ts"
+    "backup": "tsx src/database/backup.ts",
+    "db:upgrade": "tsx src/database/upgrade.ts",
+    "seed:procurement": "tsx src/database/seedV2.ts",
+    "seed:all": "tsx src/database/seed.ts && tsx src/database/seedV2.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

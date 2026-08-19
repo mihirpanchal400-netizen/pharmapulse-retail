@@ -10,6 +10,7 @@ import transactionRoutes from './routes/transactions';
 import analyticsRoutes from './routes/analytics';
 import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
+import procurementRoutes from './routes/procurement';
 import { getPharmacyProfile } from './services/settingsService';
 
 /**
@@ -57,6 +58,8 @@ export function createApp(): Express {
   app.use('/api/analytics', analyticsRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/settings', settingsRoutes);
+  // Distributor network, catalogues, comparison, purchase orders and outstanding.
+  app.use('/api/procurement', procurementRoutes);
 
   app.use('/api', notFoundHandler);
   app.use(errorHandler);

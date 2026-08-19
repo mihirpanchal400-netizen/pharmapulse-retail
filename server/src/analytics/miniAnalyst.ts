@@ -6,6 +6,9 @@ import { getSalesGrowth, getCategorySales, getRevenueConcentration } from './sal
 import { getProductPerformance } from './productAnalyzer';
 import { getInventoryTurnover, getInventorySummary, getInventoryHealthScore } from './inventoryAnalyzer';
 import { getProfitComparison } from './profitAnalyzer';
+import { getReplenishmentPlan, type ReplenishmentLine } from '../services/replenishmentService';
+import { getProcurementSummary } from '../services/procurementService';
+import { listSupplierInvoices, listCustomerDues } from '../services/outstandingService';
 import type { Insight, InsightSeverity } from '../types';
 
 /**
@@ -107,6 +110,27 @@ interface RuleOutput {
   daysUntilConsequence: number;
   link?: string | null;
   linkLabel?: string | null;
+  /**
+   * Optional one-click procurement action. When present the UI renders an
+   * "Add to Procurement Cart" button, which is what turns an observation into
+   * something the pharmacist can act on without leaving the insight.
+   */
+  action?: ProcurementAction | null;
+}
+
+/** A ready-to-order line the Mini Analyst has already costed. */
+export interface ProcurementAction {
+  type: 'ADD_TO_CART';
+  productId: number;
+  productName: string;
+  suggestedQty: number;
+  freeQty: number;
+  distributorId: number;
+  distributorName: string;
+  ptr: number;
+  schemeLabel: string;
+  effectiveCost: number;
+  estimatedCost: number;
 }
 
 function build(out: RuleOutput, anchor: number): Insight {
@@ -138,6 +162,7 @@ function build(out: RuleOutput, anchor: number): Insight {
     urgency,
     link: out.link ?? null,
     linkLabel: out.linkLabel ?? null,
+    action: out.action ?? null,
   };
 }
 
@@ -158,15 +183,37 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
   const out: Insight[] = [];
   const active = items.filter((i) => i.status === 'ACTIVE');
 
+  // The replenishment plan already knows the best distributor and the
+  // scheme-optimised quantity for every product that needs ordering. Reusing it
+  // here is what lets an insight name a supplier instead of just raising an alarm.
+  const plan = getReplenishmentPlan();
+  const planByProduct = new Map<number, ReplenishmentLine>(
+    plan.lines.map((line) => [line.productId, line]),
+  );
+
+  const actionFor = (line: ReplenishmentLine | undefined) =>
+    line && line.supplier
+      ? {
+          type: 'ADD_TO_CART' as const,
+          productId: line.productId,
+          productName: line.productName,
+          suggestedQty: line.suggestedQty,
+          freeQty: line.schemeFreeQty,
+          distributorId: line.supplier.distributorId,
+          distributorName: line.supplier.name,
+          ptr: line.supplier.ptr,
+          schemeLabel: line.supplier.schemeLabel,
+          effectiveCost: line.supplier.effectiveCost,
+          estimatedCost: line.supplier.estimatedCost,
+        }
+      : null;
+
   // --- Rule 1: out of stock, with demonstrated demand -----------------------
   const stockedOut = active.filter((i) => i.current_stock === 0 && i.sales_velocity > 0);
   if (stockedOut.length > 0) {
-    // Lost revenue while the shelf is empty, over a 7-day replenishment horizon.
-    const lostPerWeek = stockedOut.reduce(
-      (s, i) => s + i.sales_velocity * 7 * i.selling_price,
-      0,
-    );
+    const lostPerWeek = stockedOut.reduce((s, i) => s + i.sales_velocity * 7 * i.selling_price, 0);
     const worst = [...stockedOut].sort((a, b) => b.sales_velocity - a.sales_velocity).slice(0, 3);
+    const lead = planByProduct.get(worst[0].id);
 
     out.push(
       build(
@@ -177,18 +224,27 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
           description: `${plural(stockedOut.length, 'product')} sold recently but now have zero sellable stock. Every day they stay empty is revenue walking out of the door.`,
           metric: stockedOut.length,
           metricLabel: 'products out of stock',
-          recommendation: `Raise a purchase order today for these ${stockedOut.length} products. Start with ${worst.map((w) => w.product_name).join(', ')} - they have the highest daily demand.`,
+          recommendation: lead && lead.supplier
+            ? `Order today. ${lead.productName} is the biggest gap - ${lead.supplier.name} has ${lead.supplier.availableQty} units at ${currency(lead.supplier.ptr)} PTR (${lead.supplier.schemeLabel}), delivering in ${plural(lead.supplier.deliveryDays, 'day')}.`
+            : `Raise a purchase order today for these ${stockedOut.length} products. Start with ${worst.map((w) => w.product_name).join(', ')} - they have the highest daily demand.`,
           reason: `${stockedOut.length} active products have current_stock = 0 while still showing sales velocity above 0 over the last ${getThresholds().analysisWindowDays} days. At their recent rate of sale they would have sold roughly ${currency(lostPerWeek)} in the next 7 days.`,
           evidence: [
             { label: 'Products affected', value: String(stockedOut.length) },
             { label: 'Combined daily demand', value: `${round1(stockedOut.reduce((s, i) => s + i.sales_velocity, 0))} units/day` },
             { label: 'Estimated 7-day revenue lost', value: currency(lostPerWeek) },
             { label: 'Highest demand', value: `${worst[0].product_name} (${round1(worst[0].sales_velocity)} units/day)` },
+            ...(lead && lead.supplier
+              ? [
+                  { label: 'Best source', value: `${lead.supplier.name} - ${lead.supplier.schemeLabel}` },
+                  { label: 'Effective cost', value: currency(lead.supplier.effectiveCost) },
+                ]
+              : []),
           ],
           valueAtStake: lostPerWeek,
-          daysUntilConsequence: 0, // already happening
-          link: '/inventory/low-stock',
-          linkLabel: 'View low stock',
+          daysUntilConsequence: 0,
+          link: '/procurement/replenishment',
+          linkLabel: 'Open Replenishment Center',
+          action: actionFor(lead),
         },
         anchor,
       ),
@@ -199,14 +255,15 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
   const reorder = active.filter((i) => i.needs_reorder && i.current_stock > 0);
   if (reorder.length > 0) {
     const lostPerWeek = reorder.reduce((s, i) => s + i.sales_velocity * 7 * i.selling_price, 0);
-    // Urgency is driven by the product that runs out soonest.
-    const coverages = reorder
-      .map((i) => i.stock_coverage_days)
-      .filter((d): d is number => d !== null);
+    const coverages = reorder.map((i) => i.stock_coverage_days).filter((d): d is number => d !== null);
     const soonest = coverages.length ? Math.min(...coverages) : 30;
     const critical = reorder.filter(
       (i) => i.stock_coverage_days !== null && i.stock_coverage_days <= getThresholds().criticalCoverageDays,
     );
+
+    // The single most urgent sourceable line, used to make the advice specific.
+    const lead = plan.lines.find((l) => l.currentStock > 0 && l.supplier !== null);
+    const basketCost = plan.summary.estimatedCost;
 
     out.push(
       build(
@@ -217,18 +274,26 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
           description: `${plural(reorder.length, 'product')} have fallen to or below their configured reorder level. ${critical.length} of them will run out within ${getThresholds().criticalCoverageDays} days.`,
           metric: reorder.length,
           metricLabel: 'products need replenishment',
-          recommendation: `Create a purchase order covering these ${reorder.length} products. The suggested order quantity for each is shown on the Low Stock screen, calculated to top stock back up to its maximum level.`,
-          reason: `Each of these ${reorder.length} products satisfies current_stock <= reorder_level. The shortest stock coverage in the group is ${round1(soonest)} days, calculated as current_stock / sales_velocity.`,
+          recommendation: lead && lead.supplier
+            ? `Build one purchase order from the Replenishment Center - the full basket costs about ${currency(basketCost)}. Highest priority is ${lead.productName}: order ${lead.suggestedQty}${lead.schemeFreeQty ? ` (+${lead.schemeFreeQty} free)` : ''} from ${lead.supplier.name} at an effective ${currency(lead.supplier.effectiveCost)} per unit.`
+            : `Create a purchase order covering these ${reorder.length} products. Suggested quantities are on the Replenishment Center.`,
+          reason: `Each of these ${reorder.length} products satisfies current_stock <= reorder_level. The shortest stock coverage in the group is ${round1(soonest)} days, calculated as current_stock / sales_velocity. The Replenishment Center has already matched each line to its cheapest distributor by effective cost.`,
           evidence: [
             { label: 'Products below reorder level', value: String(reorder.length) },
             { label: 'Running out within 7 days', value: String(critical.length) },
             { label: 'Shortest stock coverage', value: `${round1(soonest)} days` },
             { label: 'Revenue at risk over 7 days', value: currency(lostPerWeek) },
+            { label: 'Estimated basket cost', value: currency(basketCost) },
+            { label: 'Scheme savings available', value: currency(plan.summary.estimatedSavings) },
+            ...(plan.summary.unsourced > 0
+              ? [{ label: 'No distributor listing', value: `${plan.summary.unsourced} product(s)` }]
+              : []),
           ],
           valueAtStake: lostPerWeek,
           daysUntilConsequence: soonest,
-          link: '/inventory/low-stock',
-          linkLabel: 'View low stock',
+          link: '/procurement/replenishment',
+          linkLabel: 'Open Replenishment Center',
+          action: actionFor(lead),
         },
         anchor,
       ),
@@ -253,7 +318,8 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
           description: `${plural(overstocked.length, 'product')} are holding more stock than their configured maximum. That is working capital sitting on a shelf.`,
           metric: round2(excessValue),
           metricLabel: 'excess stock value',
-          recommendation: 'Pause reordering these lines until stock normalises. Review whether the maximum stock levels are set correctly, or whether demand has fallen since they were set.',
+          recommendation:
+            'Pause reordering these lines until stock normalises. Review whether the maximum stock levels are set correctly, or whether demand has fallen since they were set.',
           reason: `${overstocked.length} products have current_stock above maximum_stock. The excess above maximum, valued at purchase cost, is ${currency(excessValue)}.`,
           evidence: [
             { label: 'Overstocked products', value: String(overstocked.length) },
@@ -261,7 +327,7 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
             { label: 'Excess value at cost', value: currency(excessValue) },
           ],
           valueAtStake: excessValue,
-          daysUntilConsequence: 60, // inefficient, but nothing worsens tomorrow
+          daysUntilConsequence: 60,
           link: '/inventory/stock',
           linkLabel: 'Review stock',
         },
@@ -271,6 +337,179 @@ function stockRules(items: InventoryItem[], anchor: number): Insight[] {
   }
 
   return out;
+}
+
+/**
+ * Rule 15 - a single named procurement recommendation.
+ *
+ * This is the insight the brief asks for by name: not "stock is low" but
+ * "order 50 of this product from that distributor at an effective 37.27".
+ * It fires on the most urgent sourceable line, so a pharmacist always has one
+ * concrete, costed action available straight from the dashboard.
+ */
+function procurementRecommendation(anchor: number): Insight[] {
+  const plan = getReplenishmentPlan();
+  const line = plan.lines.find((l) => l.supplier !== null && l.supplier.canFulfil);
+  if (!line || !line.supplier) return [];
+
+  const supplier = line.supplier;
+  const valueAtStake = line.avgDailySales * 7 * (line.lastPurchasePrice || supplier.effectiveCost);
+
+  return [
+    build(
+      {
+        id: `procure-${line.productId}`,
+        type: 'PROCUREMENT_RECOMMENDATION',
+        title: `${line.productName} requires replenishment`,
+        description: `Stock is down to ${line.currentStock} against ${round1(line.avgDailySales)} units/day of demand - about ${line.stockCoverageDays === null ? 'no measurable' : `${line.stockCoverageDays} days of`} cover against a ${plural(line.leadTimeDays, 'day')} lead time.`,
+        metric: line.suggestedQty,
+        metricLabel: 'suggested order quantity',
+        recommendation: `Order ${line.suggestedQty} units from ${supplier.name}${line.schemeFreeQty > 0 ? `, which earns ${line.schemeFreeQty} free under ${supplier.schemeLabel}` : ''}. Estimated cost ${currency(supplier.estimatedCost)} at an effective ${currency(supplier.effectiveCost)} per unit received.`,
+        reason: `${line.reason} ${line.quantityNote} ${supplier.name} is the cheapest of the distributors listing this product once free goods are counted, at ${currency(supplier.effectiveCost)} per unit against a quoted PTR of ${currency(supplier.ptr)}.`,
+        evidence: [
+          { label: 'Current stock', value: `${line.currentStock} units` },
+          { label: 'Average daily sales', value: `${round1(line.avgDailySales)} units/day` },
+          { label: 'Stock coverage', value: line.stockCoverageDays === null ? 'No recent sales' : `${line.stockCoverageDays} days` },
+          { label: 'Reorder level', value: `${line.reorderLevel} units` },
+          { label: 'Lead time', value: plural(line.leadTimeDays, 'day') },
+          { label: 'Suggested order', value: `${line.suggestedQty}${line.schemeFreeQty ? ` + ${line.schemeFreeQty} free` : ''}` },
+          { label: 'Recommended distributor', value: supplier.name },
+          { label: 'Distributor stock', value: `${supplier.availableQty} units` },
+          { label: 'PTR', value: currency(supplier.ptr) },
+          { label: 'Scheme', value: supplier.schemeLabel },
+          { label: 'Effective cost', value: currency(supplier.effectiveCost) },
+          { label: 'Estimated order value', value: currency(supplier.estimatedCost) },
+        ],
+        valueAtStake,
+        daysUntilConsequence: line.stockCoverageDays === null ? line.leadTimeDays : line.stockCoverageDays,
+        link: '/procurement/replenishment',
+        linkLabel: 'Open Replenishment Center',
+        action: {
+          type: 'ADD_TO_CART',
+          productId: line.productId,
+          productName: line.productName,
+          suggestedQty: line.suggestedQty,
+          freeQty: line.schemeFreeQty,
+          distributorId: supplier.distributorId,
+          distributorName: supplier.name,
+          ptr: supplier.ptr,
+          schemeLabel: supplier.schemeLabel,
+          effectiveCost: supplier.effectiveCost,
+          estimatedCost: supplier.estimatedCost,
+        },
+      },
+      anchor,
+    ),
+  ];
+}
+
+/**
+ * Rules 16 & 17 - working capital on both sides of the ledger.
+ * A pharmacy can be profitable on paper and still fail on cash timing.
+ */
+function outstandingRules(anchor: number): Insight[] {
+  const out: Insight[] = [];
+
+  const supplier = listSupplierInvoices({ pageSize: 1 }).summary;
+  if (supplier.overdue > 0) {
+    out.push(
+      build(
+        {
+          id: 'supplier-overdue',
+          type: 'SUPPLIER_OVERDUE',
+          title: 'Supplier invoices are overdue',
+          description: `${currency(supplier.overdue)} is past its due date across your distributors. Overdue balances are the fastest way to lose credit terms and scheme eligibility.`,
+          metric: round2(supplier.overdue),
+          metricLabel: 'overdue to suppliers',
+          recommendation:
+            'Settle the oldest invoices first. Distributors withdraw credit terms and free-goods schemes from accounts that run past terms, which raises your effective cost on every future order.',
+          reason: `${supplier.openInvoices} supplier invoices are unpaid, totalling ${currency(supplier.totalOutstanding)}. Of that, ${currency(supplier.overdue)} is already past its due date, including ${currency(supplier.d60_plus)} more than 60 days late.`,
+          evidence: [
+            { label: 'Total outstanding', value: currency(supplier.totalOutstanding) },
+            { label: 'Overdue', value: currency(supplier.overdue) },
+            { label: 'Not yet due', value: currency(supplier.current) },
+            { label: '1-30 days past due', value: currency(supplier.d1_30) },
+            { label: '31-60 days past due', value: currency(supplier.d31_60) },
+            { label: 'Over 60 days past due', value: currency(supplier.d60_plus) },
+          ],
+          valueAtStake: supplier.overdue,
+          daysUntilConsequence: 0,
+          link: '/procurement/outstanding',
+          linkLabel: 'View supplier outstanding',
+        },
+        anchor,
+      ),
+    );
+  }
+
+  const customer = listCustomerDues({ pageSize: 1 }).summary;
+  if (customer.overdue > 0) {
+    out.push(
+      build(
+        {
+          id: 'customer-overdue',
+          type: 'CUSTOMER_OVERDUE',
+          title: 'Customer credit is overdue',
+          description: `${currency(customer.overdue)} owed by credit customers is past due across ${plural(customer.invoices, 'open bill')}.`,
+          metric: round2(customer.overdue),
+          metricLabel: 'overdue from customers',
+          recommendation:
+            'Follow up the oldest balances first. Money tied up in receivables is money not available to buy stock, and the products it would have bought are the ones on your reorder list.',
+          reason: `${customer.invoices} credit bills remain unsettled, totalling ${currency(customer.totalOutstanding)}, of which ${currency(customer.overdue)} is past its due date.`,
+          evidence: [
+            { label: 'Total receivable', value: currency(customer.totalOutstanding) },
+            { label: 'Overdue', value: currency(customer.overdue) },
+            { label: 'Not yet due', value: currency(customer.current) },
+            { label: '1-30 days past due', value: currency(customer.d1_30) },
+            { label: '31-60 days past due', value: currency(customer.d31_60) },
+            { label: 'Over 60 days past due', value: currency(customer.d60_plus) },
+          ],
+          valueAtStake: customer.overdue,
+          daysUntilConsequence: 15,
+          link: '/customers/outstanding',
+          linkLabel: 'View customer dues',
+        },
+        anchor,
+      ),
+    );
+  }
+
+  return out;
+}
+
+/** Rule 18 - purchase orders that were raised but never received. */
+function pendingOrderRule(anchor: number): Insight[] {
+  const summary = getProcurementSummary();
+  const stalled =
+    summary.statusCounts.SENT + summary.statusCounts.CONFIRMED + summary.statusCounts.PARTIALLY_RECEIVED;
+  if (stalled === 0) return [];
+
+  return [
+    build(
+      {
+        id: 'pending-orders',
+        type: 'PENDING_ORDERS',
+        title: 'Purchase orders awaiting delivery',
+        description: `${plural(stalled, 'order')} worth ${currency(summary.openValue)} have been placed but not fully received.`,
+        metric: stalled,
+        metricLabel: 'orders awaiting goods',
+        recommendation:
+          'Chase the distributors on these orders before reordering the same products elsewhere - double-ordering is how overstock gets created.',
+        reason: `${summary.statusCounts.SENT} sent, ${summary.statusCounts.CONFIRMED} confirmed and ${summary.statusCounts.PARTIALLY_RECEIVED} partially received. Combined open commitment is ${currency(summary.openValue)}.`,
+        evidence: [
+          { label: 'Sent, not confirmed', value: String(summary.statusCounts.SENT) },
+          { label: 'Confirmed, not delivered', value: String(summary.statusCounts.CONFIRMED) },
+          { label: 'Partially received', value: String(summary.statusCounts.PARTIALLY_RECEIVED) },
+          { label: 'Open order value', value: currency(summary.openValue) },
+        ],
+        valueAtStake: summary.openValue * 0.1,
+        daysUntilConsequence: 20,
+        link: '/procurement/orders',
+        linkLabel: 'View purchase orders',
+      },
+      anchor,
+    ),
+  ];
 }
 
 /**
@@ -750,6 +989,9 @@ export function runAnalysis(): AnalystReport {
 
   const insights = [
     ...stockRules(items, anchor),
+    ...procurementRecommendation(anchor),
+    ...outstandingRules(anchor),
+    ...pendingOrderRule(anchor),
     ...expiryRules(anchor),
     ...deadStockRule(items, anchor),
     ...salesTrendRules(anchor),

@@ -20,7 +20,10 @@
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client",
     "db:stats": "npm run db:stats --workspace server",
     "backup": "npm run backup --workspace server",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "db:upgrade": "npm run db:upgrade --workspace server",
+    "seed:procurement": "npm run seed:procurement --workspace server",
+    "seed:all": "npm run seed:all --workspace server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

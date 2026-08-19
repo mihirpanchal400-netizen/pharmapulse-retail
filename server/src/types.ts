@@ -184,4 +184,21 @@ export interface Insight {
   /** Client route the "view" button navigates to. */
   link: string | null;
   linkLabel: string | null;
+  /**
+   * Optional costed procurement action attached to replenishment insights, so
+   * the recommendation can be acted on directly instead of merely read.
+   */
+  action?: {
+    type: 'ADD_TO_CART';
+    productId: number;
+    productName: string;
+    suggestedQty: number;
+    freeQty: number;
+    distributorId: number;
+    distributorName: string;
+    ptr: number;
+    schemeLabel: string;
+    effectiveCost: number;
+    estimatedCost: number;
+  } | null;
 }

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { getDb, type Db } from './connection';
 import { SCHEMA_SQL } from './schema';
 import { defaultThresholds } from '../config';
+import { runMigrationsV2 } from './migrateV2';
 
 /**
  * Default settings written on first run. Users can change all of these from the
@@ -66,6 +67,15 @@ export function seedUsers(db: Db = getDb()): void {
  */
 export function runMigrations(db: Db = getDb()): void {
   createSchema(db);
+  // Schema v2 adds the procurement / distributor / audit tables and the Indian
+  // pharma pricing columns. Additive and idempotent - safe on every start.
+  const v2 = runMigrationsV2(db);
+  if (v2.tablesCreated.length > 0 || v2.columnsAdded.length > 0 || v2.paymentMethodsWidened) {
+    console.log(
+      `  Schema upgrade: +${v2.tablesCreated.length} tables, +${v2.columnsAdded.length} columns` +
+        (v2.paymentMethodsWidened ? ', credit sales enabled' : ''),
+    );
+  }
   seedSettings(db);
   seedUsers(db);
 }
