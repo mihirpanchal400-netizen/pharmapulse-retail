@@ -316,6 +316,40 @@ describe('import: product master', () => {
     expect(result.outcome.created).toBe(0);
   });
 
+  it('adopts the product code from the file when a product was matched by name', async () => {
+    const db = getDb();
+    // A product that exists only under a generated code, as happens when a stock
+    // file names a product before the master has been imported.
+    db.prepare(
+      `INSERT INTO products (product_code, product_name, category, purchase_price, selling_price,
+                             tax_rate, reorder_level, minimum_stock, maximum_stock)
+       VALUES ('IMP-GENERATED-XYZ', 'Rabeprazole 20mg Tablet', 'General', 0, 0, 12, 10, 5, 200)`,
+    ).run();
+
+    await importFile({ fileName: 'sample_product_master.xlsx', type: 'PRODUCT_MASTER' });
+
+    const row = db
+      .prepare("SELECT product_code FROM products WHERE product_name = 'Rabeprazole 20mg Tablet'")
+      .get() as { product_code: string };
+    // The file carries ITM0023 for this product; the generated code gives way.
+    expect(row.product_code).toBe('ITM0023');
+  });
+
+  it('leaves existing product codes alone when the file has no code column', async () => {
+    const db = getDb();
+    const before = db
+      .prepare("SELECT product_code FROM products WHERE product_name = 'Pantoprazole 40mg Tablet'")
+      .get() as { product_code: string };
+
+    // The CSV sample has no code column at all.
+    await importFile({ fileName: 'sample_product_master.csv', type: 'PRODUCT_MASTER' });
+
+    const after = db
+      .prepare("SELECT product_code FROM products WHERE product_name = 'Pantoprazole 40mg Tablet'")
+      .get() as { product_code: string };
+    expect(after.product_code).toBe(before.product_code);
+  });
+
   it('refuses to run the same job twice', async () => {
     const { job, analysis } = await upload('sample_product_master.xlsx');
     const sheet = analysis.sheets[0];

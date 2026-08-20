@@ -309,7 +309,7 @@ Full detail in [IMPORT_SYSTEM.md](./IMPORT_SYSTEM.md).
 npm run test
 ```
 
-**77 tests** across two suites, both on a fresh in-memory database.
+**79 tests** across two suites, both on a fresh in-memory database.
 
 `tests/workflow.test.ts` — 34 tests walking the complete operating cycle:
 
@@ -327,7 +327,7 @@ is never dispensed; gross profit uses the actual batch cost rather than an avera
 quantities always reconcile with the movement ledger; stock can never go negative; and the
 Mini Analyst returns identical output for identical data.
 
-`tests/import.test.ts` — 43 tests running the real sample workbooks through the
+`tests/import.test.ts` — 45 tests running the real sample workbooks through the
 Import Center:
 
 ```

@@ -297,7 +297,7 @@ Plus `source_import_job_id` on `products`, `suppliers`, `distributors`,
 
 ## 13. Tests
 
-`tests/import.test.ts` — 43 tests over the generated sample files, so the suite
+`tests/import.test.ts` — 45 tests over the generated sample files, so the suite
 exercises exactly what ships in `/sample-data`: coercion, detection, multi-sheet
 reading, validation severity, every import type, duplicate suppression on
 re-import, the CSV path, history, the error report, remembered mappings,

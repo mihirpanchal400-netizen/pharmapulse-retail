@@ -264,6 +264,9 @@ function importProducts(ctx: Ctx, rows: ValidatedRow[]): { created: number; upda
        strength = @strength, pack_size = @pack_size, unit = @unit, units_per_pack = @units_per_pack,
        manufacturer = @manufacturer, manufacturer_id = @manufacturer_id, barcode = @barcode,
        hsn_code = @hsn_code, tax_rate = @tax_rate, mrp = @mrp, ptr = @ptr, pts = @pts,
+       -- Adopt the code the file gives, but never blank an existing one: a file
+       -- that carries no code column must leave the pharmacy's codes alone.
+       product_code = COALESCE(@file_product_code, product_code),
        purchase_price = @purchase_price, selling_price = @selling_price,
        reorder_level = @reorder_level, minimum_stock = @minimum_stock, maximum_stock = @maximum_stock,
        lead_time_days = @lead_time_days, schedule_category = @schedule_category,
@@ -308,6 +311,8 @@ function importProducts(ctx: Ctx, rows: ValidatedRow[]): { created: number; upda
       id: existingId,
       job_id: ctx.jobId,
       product_code: code ?? (current?.product_code as string) ?? derivedProductCode(productName),
+      // Only what the file actually supplied, for the update path above.
+      file_product_code: code,
       product_name: productName,
       generic_name: keep(str(row, 'generic_name'), (current?.generic_name as string) ?? null),
       brand_name: keep(str(row, 'brand_name'), (current?.brand_name as string) ?? null),
