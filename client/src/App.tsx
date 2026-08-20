@@ -11,6 +11,8 @@ import Reports from './pages/Reports';
 import Returns from './pages/Returns';
 import PurchaseReturns from './pages/PurchaseReturns';
 import Settings from './pages/Settings';
+import ImportCenter from './pages/ImportCenter';
+import ImportHistory from './pages/ImportHistory';
 import Replenishment from './pages/Replenishment';
 import SupplierComparison from './pages/SupplierComparison';
 import ProcurementCart from './pages/ProcurementCart';
@@ -102,6 +104,10 @@ function Gate() {
         <Route path="/analytics/products" element={<ProductAnalytics />} />
         <Route path="/analytics/inventory" element={<InventoryAnalytics />} />
         <Route path="/analytics/profit" element={<ProfitAnalytics />} />
+
+        {/* ------------------------------------------------------------- Data */}
+        <Route path="/import" element={<ImportCenter />} />
+        <Route path="/import/history" element={<ImportHistory />} />
 
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />

@@ -201,6 +201,45 @@ Append-only audit log. Every stock movement in the system writes exactly one row
 This log is what makes the system auditable: the current quantity of any batch should
 equal the sum of its transactions, and that invariant is asserted in the test suite.
 
+### Import Center — `import_jobs`, `import_errors`, `import_mappings`
+
+Added by schema v3 (`server/src/database/schemaV3.ts`), additive and idempotent
+like v2.
+
+**`import_jobs`** — one row per uploaded file. It survives the whole wizard
+(upload → map → preview → commit), so a mapping is not lost when a tab is
+closed, and it remains afterwards as the Import History a pharmacy needs to
+answer *"where did these 4,000 products come from?"*.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `file_name`, `file_size`, `file_type` | TEXT / INTEGER | `XLSX` \| `XLS` \| `CSV` |
+| `stored_path` | TEXT | Upload path on disk. Cleared on commit or cancel, and **never returned by the API** |
+| `import_type`, `sheet_name` | TEXT | Chosen in the wizard; NULL until then |
+| `status` | TEXT | CHECK: `UPLOADED` \| `MAPPED` \| `PREVIEWED` \| `COMPLETED` \| `FAILED` \| `CANCELLED` |
+| `total_rows` … `skipped_count` | INTEGER | Row counts; `total_rows` excludes the header |
+| `mapping_json`, `options_json`, `analysis_json` | TEXT | JSON, so the wizard can be resumed without re-reading the file |
+| `user_id`, `username` | INTEGER / TEXT | Who ran it |
+| `error_message`, `started_at`, `finished_at`, `created_at` | TEXT | |
+
+**`import_errors`** — per-row findings. Stored rather than only returned, because
+the error report is downloaded after the fact and often days later.
+`row_number` is the 1-based row **as the user sees it in Excel**, header row
+included, so "row 24" in the report is row 24 in their spreadsheet.
+`severity` is `ERROR` (row rejected) or `WARNING` (row imported anyway).
+
+**`import_mappings`** — remembered column mappings, unique on
+`(import_type, signature)`. The signature is the sheet's headers normalised,
+sorted and joined, so a distributor reordering two columns still hits the saved
+mapping on next month's file.
+
+**Trace columns.** `source_import_job_id` on `products`, `suppliers`,
+`distributors`, `product_batches` and `manufacturers` records which upload
+created or last touched a record. "Which import created this product?" is the
+first question asked when an import goes wrong, and answering it by searching
+activity-log strings is not good enough.
+
 ---
 
 ## Design decisions
@@ -221,6 +260,15 @@ recorded here rather than hidden.
 Date-only columns use `YYYY-MM-DD`, timestamps use `YYYY-MM-DD HH:MM:SS`. ISO strings
 sort and compare lexicographically in SQLite, so `BETWEEN` and `>=` work correctly on
 plain text with no timezone conversion anywhere.
+
+### Imported stock is ordinary stock
+
+An import writes batches through the same `product_batches` table and the same
+`recordTransaction` ledger helper as a goods receipt, and opening stock also
+lands in `stock_adjustments` with reason `OPENING_STOCK`. There is no separate
+"imported stock" concept and no wide staging table holding raw spreadsheet rows:
+the batch-versus-ledger invariant holds for imported stock exactly as it does for
+stock received against a purchase order, and the import test suite asserts it.
 
 ### CHECK constraints as the last line of defence
 Validation happens at the API boundary with Zod, but the database enforces it again:

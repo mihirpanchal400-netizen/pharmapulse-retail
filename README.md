@@ -17,6 +17,7 @@ account, no Docker and no internet connection after install.
 
 | Area | Capability |
 |---|---|
+| **Excel / CSV import** | Multi-sheet workbooks, smart column detection, editable mapping, full validation, preview, error report and import history — bring your own product master, suppliers, stock and trading history |
 | **Product master** | 126 products with MRP, PTR, PTS, GST, HSN, schedule category, barcode, composition, lead time, storage condition |
 | **Inventory** | Batch-level stock, append-only movement ledger, expiry buckets, stock valuation at cost and retail |
 | **FEFO dispensing** | Earliest-expiring batch always leaves first; expired stock can never be sold; one sale line can split across batches |
@@ -44,6 +45,13 @@ decision. This project closes that gap in two places:
    says *order 142 units of this product from Trinity Pharma Traders at an effective
    ₹10.24, which earns 14 free under their scheme* — with an **Add to Cart** button and
    the full arithmetic behind the recommendation.
+
+3. **Your data, not demo data.** A pharmacy already has its catalogue, supplier list and
+   stock position in a spreadsheet somewhere. The Import Center reads those files as
+   they actually are — "Medicine Name", "Qty", "Exp.", `₹ 1,20,000`, `06/27`, a title
+   row above the headers — and turns them into normalised operational records. Software
+   that cannot read a pharmacy's existing files is a demo; this is the feature that
+   makes the rest of it usable.
 
 ---
 
@@ -126,6 +134,7 @@ deliberately. They are not production security.
 | `npm run seed` | Regenerates the base trading history (products, sales, batches) |
 | `npm run seed:procurement` | Regenerates the distributor network and purchase orders |
 | `npm run seed:all` | Both, in the right order |
+| `npm run sample:data` | Regenerates the demonstration Excel files in `sample-data/` |
 | `npm run db:stats` | Prints row counts, business figures and the ranked Mini Analyst output |
 | `npm run db:upgrade` | Applies schema migrations to an existing database |
 | `npm run backup` | Timestamped copy of the database into `database/backups/` |
@@ -243,13 +252,66 @@ Full specification in [ANALYTICS_METHODOLOGY.md](./ANALYTICS_METHODOLOGY.md).
 
 ---
 
+## The Import Center
+
+The feature that turns this from a demo into something a pharmacy could actually
+start using: it reads the files they already have.
+
+```
+UPLOAD  →  SHEET & TYPE  →  MAP COLUMNS  →  REVIEW & IMPORT
+```
+
+Open **Import Center** in the sidebar, or go to `/import`.
+
+- **Excel** (`.xlsx`, `.xlsm`) and **CSV**, up to 25 MB
+- **Multi-sheet workbooks** — every tab is read and typed separately, so one
+  "master file" holding Products, Suppliers and Stock needs no splitting by hand
+- **Column names do not have to match.** "Medicine Name", "Company", "Qty",
+  "Exp.", "MRP Rs." are all recognised, and anything the detector is unsure about
+  is left for you to map rather than guessed at
+- **Indian formats read correctly** — `DD/MM/YYYY`, `06/27` expiries, `Jun-27`,
+  Excel serial dates, `₹ 1,20,000.50`, `10+1` schemes
+- **Nothing is written until you have seen it.** The review step shows the first
+  20 rows exactly as they will be stored, plus every problem in the file, by
+  spreadsheet row number
+- **Rejected rows come back as a CSV** you can fix in your own spreadsheet
+- **Import history** keeps the record: file, sheet, type, user, rows imported,
+  rows rejected — and the findings stay downloadable afterwards
+
+Nine import types, each with a downloadable template:
+
+| Product Master | Manufacturer Master | Supplier Master |
+|---|---|---|
+| **Distributor / Stockist Master** | **Opening Stock** | **Batch Master** |
+| **Distributor Price List** | **Purchase History** | **Sales History** |
+
+Try it with the demonstration files. They are **generated**, not committed as
+binaries, so they always match the current field catalogue — run this once after
+cloning:
+
+```powershell
+npm run sample:data
+```
+
+That writes seven workbooks and a CSV into `sample-data/`.
+
+They are deliberately untidy in the way real exports are — trade column names, a
+title row above the headers, rupee symbols in price cells, three date styles, and
+a few genuinely broken rows so you can see the error report work.
+
+Full detail in [IMPORT_SYSTEM.md](./IMPORT_SYSTEM.md).
+
+---
+
 ## Testing
 
 ```powershell
 npm run test
 ```
 
-34 tests walking the complete operating cycle on a fresh in-memory database:
+**77 tests** across two suites, both on a fresh in-memory database.
+
+`tests/workflow.test.ts` — 34 tests walking the complete operating cycle:
 
 ```
 product → batch → distributor → catalogue → scheme → opening stock
@@ -264,6 +326,23 @@ beyond available stock is rejected **and leaves the database unchanged**; an exp
 is never dispensed; gross profit uses the actual batch cost rather than an average; batch
 quantities always reconcile with the movement ledger; stock can never go negative; and the
 Mini Analyst returns identical output for identical data.
+
+`tests/import.test.ts` — 43 tests running the real sample workbooks through the
+Import Center:
+
+```
+messy Excel → sheet analysis → type detection → column mapping
+  → validation → preview → commit → products, suppliers, stock, batches
+  → inventory, Replenishment Center and Mini Analyst all see the imported data
+```
+
+The sample files are **generated by the suite**, not checked-in fixtures, so the
+tests exercise exactly what ships in `sample-data/`. They pin the behaviour that
+would otherwise silently corrupt data: `03/04/2027` is read as 3 April and never
+4 March; `06/2027` as an expiry means the last day of June; a fractional quantity
+is rejected rather than truncated; an expired batch warns but still imports;
+re-importing a file updates rather than duplicating; and a price list never
+invents a product that is not in the master.
 
 ---
 
@@ -280,6 +359,11 @@ valid registrations.
 **No patient data of any kind** — no records, prescriptions, diagnoses, medical histories
 or insurance claims — is stored, processed or generated. The customer table deliberately
 holds only a name, phone and type.
+
+The demonstration Excel files in `sample-data/` are generated the same way, from the same
+invented companies and distributors. If you import **your own** files, that data is yours
+and stays on your machine — the uploaded spreadsheet is deleted once the import completes,
+and nothing is transmitted anywhere.
 
 ### The distributor network is a demo
 
@@ -318,6 +402,16 @@ account or commercial dataset is required to build, run or demonstrate it.
   prescription.
 - **Analytics is descriptive, not predictive.** Every screen reports what happened;
   none forecasts what will.
+- **Imported registration numbers are not verified.** GSTIN and drug-licence values from a
+  spreadsheet are stored exactly as given; the software checks no registry.
+- **Opening Stock overwrites quantities.** It is meant to be run once, at go-live. Take a
+  backup (`npm run backup`) before a large import — the import itself is transactional and
+  cannot land half-done, but a successful import of the *wrong file* is still wrong.
+
+Before deploying this in a working pharmacy, read
+[COMMERCIALIZATION_CONSIDERATIONS.md](./COMMERCIALIZATION_CONSIDERATIONS.md) — it maps the
+licensing, GST, data-protection and electronic-records ground this software does **not**
+cover.
 
 ---
 
@@ -330,14 +424,18 @@ pharmapulse-retail/
 │   ├── routes/          HTTP endpoints
 │   ├── middleware/      auth, validation, error handling
 │   ├── services/        business logic incl. scheme, procurement, replenishment
+│   ├── import/          Import Center — workbook reader, column detection,
+│   │                    validation, importers, templates, sample generator
 │   ├── analytics/       measurement + Mini Analyst
 │   ├── reports/         CSV exports
 │   └── database/        schema, migrations, seed, backup
 ├── seed/catalog.json    synthetic product and supplier catalogue
-├── tests/               end-to-end workflow suite
-├── database/            SQLite file (git-ignored) + backups
-└── docs at root         ARCHITECTURE · DATABASE_SCHEMA · ANALYTICS_METHODOLOGY
-                         PROJECT_PLAN · PROJECT_UPGRADE_PLAN · THIRD_PARTY_LICENSES
+├── sample-data/         demonstration Excel/CSV files (npm run sample:data)
+├── tests/               workflow suite + Import Center suite
+├── database/            SQLite file, uploads and backups (all git-ignored)
+└── docs at root         ARCHITECTURE · DATABASE_SCHEMA · IMPORT_SYSTEM
+                         ANALYTICS_METHODOLOGY · PROJECT_AUDIT
+                         COMMERCIALIZATION_CONSIDERATIONS · THIRD_PARTY_LICENSES
 ```
 
 ---

@@ -11,6 +11,7 @@ import analyticsRoutes from './routes/analytics';
 import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import procurementRoutes from './routes/procurement';
+import importRoutes from './routes/imports';
 import { getPharmacyProfile } from './services/settingsService';
 
 /**
@@ -60,6 +61,8 @@ export function createApp(): Express {
   app.use('/api/settings', settingsRoutes);
   // Distributor network, catalogues, comparison, purchase orders and outstanding.
   app.use('/api/procurement', procurementRoutes);
+  // Import Center: Excel/CSV upload, mapping, validation, preview and history.
+  app.use('/api/imports', importRoutes);
 
   app.use('/api', notFoundHandler);
   app.use(errorHandler);

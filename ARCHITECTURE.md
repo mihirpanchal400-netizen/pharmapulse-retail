@@ -36,6 +36,9 @@ boundaries.
 |  services/     BUSINESS LOGIC                                |
 |                FEFO allocation, invoice totals, stock        |
 |                movement, returns, purchases                  |
+|  import/       IMPORT CENTER                                 |
+|                workbook reader, column detection,            |
+|                validation, per-type importers, templates     |
 |  analytics/    READ-ONLY measurement                         |
 |                sales / product / inventory / profit          |
 |                + miniAnalyst rule engine                     |
@@ -45,7 +48,7 @@ boundaries.
                             |  better-sqlite3 (synchronous, in-process)
 +---------------------------v----------------------------------+
 |  SQLite  -  database/pharmapulse.db  -  WAL mode             |
-|  14 tables - foreign keys ON - CHECK constraints             |
+|  30 tables - foreign keys ON - CHECK constraints             |
 +--------------------------------------------------------------+
 ```
 
@@ -58,6 +61,8 @@ The layering is enforced by a single import rule:
 ```
 routes     ->  services   ->  database
 routes     ->  analytics  ->  database
+routes     ->  import     ->  database
+import     ->  services       (for the shared ledger helper only)
 analytics  -/->  services      (analytics never mutates state)
 services   -/->  routes        (business logic knows nothing about HTTP)
 ```
@@ -71,6 +76,13 @@ Consequences that matter:
   analytics bug can produce a wrong number; it can never corrupt inventory.
 - **`routes/` contains no arithmetic.** If a route file computes a total, that logic is
   in the wrong place.
+- **`import/` writes with prepared statements rather than through the CRUD services.**
+  Those services validate and re-query on every call, which is right for a form and
+  wrong for 10,000 rows. The importers use the same tables and the same
+  `recordTransaction` ledger helper, so the invariants match while the throughput does
+  not collapse. This is the one deliberate exception to "all writes go through
+  `services/`", and it is why the import suite asserts the batch-versus-ledger
+  invariant directly. Full design in [IMPORT_SYSTEM.md](./IMPORT_SYSTEM.md).
 
 ## 4. Where the money is calculated
 

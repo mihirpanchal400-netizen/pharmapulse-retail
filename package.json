@@ -23,7 +23,8 @@
     "check": "npm run typecheck && npm run test",
     "db:upgrade": "npm run db:upgrade --workspace server",
     "seed:procurement": "npm run seed:procurement --workspace server",
-    "seed:all": "npm run seed:all --workspace server"
+    "seed:all": "npm run seed:all --workspace server",
+    "sample:data": "npm run sample:data --workspace server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { config } from './config';
 import { getDb, closeDb } from './database/connection';
 import { runMigrations } from './database/migrate';
+import { pruneStaleUploads } from './import/service';
 
 /**
  * API entry point.
@@ -13,6 +14,11 @@ import { runMigrations } from './database/migrate';
 function start(): void {
   const db = getDb();
   runMigrations(db);
+
+  // Files from wizards nobody finished. Keeping a pharmacy's spreadsheets on
+  // disk indefinitely is a liability, not a feature.
+  const pruned = pruneStaleUploads();
+  if (pruned > 0) console.log(`  Removed ${pruned} abandoned upload(s).`);
 
   const counts = db
     .prepare(

@@ -3,6 +3,7 @@ import { getDb, type Db } from './connection';
 import { SCHEMA_SQL } from './schema';
 import { defaultThresholds } from '../config';
 import { runMigrationsV2 } from './migrateV2';
+import { runMigrationsV3 } from './migrateV3';
 
 /**
  * Default settings written on first run. Users can change all of these from the
@@ -70,9 +71,14 @@ export function runMigrations(db: Db = getDb()): void {
   // Schema v2 adds the procurement / distributor / audit tables and the Indian
   // pharma pricing columns. Additive and idempotent - safe on every start.
   const v2 = runMigrationsV2(db);
-  if (v2.tablesCreated.length > 0 || v2.columnsAdded.length > 0 || v2.paymentMethodsWidened) {
+  // Schema v3 adds the Import Center tables and the source-job trace columns.
+  const v3 = runMigrationsV3(db);
+
+  const tables = v2.tablesCreated.length + v3.tablesCreated.length;
+  const columns = v2.columnsAdded.length + v3.columnsAdded.length;
+  if (tables > 0 || columns > 0 || v2.paymentMethodsWidened) {
     console.log(
-      `  Schema upgrade: +${v2.tablesCreated.length} tables, +${v2.columnsAdded.length} columns` +
+      `  Schema upgrade: +${tables} tables, +${columns} columns` +
         (v2.paymentMethodsWidened ? ', credit sales enabled' : ''),
     );
   }

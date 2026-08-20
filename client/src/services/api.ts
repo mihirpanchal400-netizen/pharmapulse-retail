@@ -135,6 +135,101 @@ export const api = {
 };
 
 /**
+ * Uploads a spreadsheet to the Import Center.
+ *
+ * Sent as a raw body with the file name in a header rather than as multipart
+ * form data: there is exactly one file, and this keeps the server free of a
+ * multipart dependency. `onProgress` is driven by XMLHttpRequest because
+ * `fetch` still cannot report upload progress, and a pharmacy uploading a
+ * 20 MB product master deserves a progress bar.
+ */
+export function uploadImportFile<T>(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/imports/upload');
+    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    // encodeURIComponent keeps a non-ASCII file name inside the header's
+    // permitted character set; the server only reads the basename.
+    request.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+
+    const token = tokenStore.get();
+    if (token) request.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    request.onload = () => {
+      if (request.status === 401) {
+        tokenStore.clear();
+        onSessionExpired();
+        reject(new ApiError('Your session has expired. Please sign in again.', 401, 'UNAUTHORIZED'));
+        return;
+      }
+      try {
+        const payload = JSON.parse(request.responseText) as { data?: T; error?: { message?: string; code?: string } };
+        if (request.status >= 200 && request.status < 300) {
+          resolve(payload.data as T);
+        } else {
+          reject(new ApiError(payload?.error?.message ?? `Upload failed (${request.status})`, request.status, payload?.error?.code));
+        }
+      } catch {
+        reject(new ApiError(`Upload failed (${request.status})`, request.status));
+      }
+    };
+
+    request.onerror = () =>
+      reject(new ApiError('Cannot reach the PharmaPulse API. Is it running? Start it with  npm run dev', 0, 'NETWORK'));
+
+    request.send(file);
+  });
+}
+
+/**
+ * Downloads any authenticated file endpoint (templates, error reports).
+ *
+ * Shares the fetch-then-anchor approach with `downloadCsv` below; kept separate
+ * because these endpoints are not reports and take no report parameters.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<string> {
+  const token = tokenStore.get();
+  const response = await fetch(buildUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    let message = `Download failed (${response.status})`;
+    try {
+      const payload = (await response.json()) as { error?: { message?: string } };
+      if (payload?.error?.message) message = payload.error.message;
+    } catch {
+      /* keep the generic message */
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const filename = /filename="?([^"]+)"?/.exec(disposition)?.[1] ?? fallbackName;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+
+  return filename;
+}
+
+/**
  * Triggers a CSV download.
  *
  * The file has to be fetched rather than linked, because the endpoint needs the

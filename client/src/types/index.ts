@@ -216,3 +216,149 @@ export interface PharmacyProfile {
   return_prefix: string;
   currency_symbol: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Import Center                                                               */
+/* -------------------------------------------------------------------------- */
+
+export type ImportType =
+  | 'PRODUCT_MASTER'
+  | 'MANUFACTURER_MASTER'
+  | 'SUPPLIER_MASTER'
+  | 'DISTRIBUTOR_MASTER'
+  | 'OPENING_STOCK'
+  | 'BATCH_MASTER'
+  | 'PRICE_LIST'
+  | 'PURCHASE_HISTORY'
+  | 'SALES_HISTORY';
+
+export interface ImportTypeSummary {
+  type: ImportType;
+  label: string;
+  description: string;
+  affects: string;
+  fieldCount: number;
+  requiredFields: string[];
+  requireAnyOf: { label: string; keys: string[] }[];
+}
+
+export interface ImportField {
+  key: string;
+  label: string;
+  type: string;
+  required: boolean;
+  note?: string;
+  values?: string[];
+  example?: string | number;
+}
+
+export interface SheetColumn {
+  name: string;
+  index: number;
+  fillRate: number;
+  detectedType: 'text' | 'number' | 'date' | 'empty';
+  samples: string[];
+}
+
+export interface SheetAnalysis {
+  name: string;
+  rowCount: number;
+  headerRow: number;
+  columns: SheetColumn[];
+  emptyColumns: string[];
+  suggestedType: ImportType | null;
+  confidence: number;
+  duplicateRowCount: number;
+  problem?: string;
+}
+
+export interface WorkbookAnalysis {
+  fileName: string;
+  fileType: 'XLSX' | 'XLS' | 'CSV';
+  fileSize: number;
+  sheets: SheetAnalysis[];
+}
+
+export interface ImportJob {
+  id: number;
+  file_name: string;
+  file_size: number;
+  file_type: string;
+  import_type: ImportType | null;
+  sheet_name: string | null;
+  status: 'UPLOADED' | 'MAPPED' | 'PREVIEWED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  duplicate_rows: number;
+  imported_rows: number;
+  rejected_rows: number;
+  created_count: number;
+  updated_count: number;
+  skipped_count: number;
+  username: string | null;
+  error_message: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface RowIssue {
+  rowNumber: number;
+  field?: string;
+  columnName?: string;
+  value?: string;
+  severity: 'ERROR' | 'WARNING';
+  message: string;
+}
+
+export interface ImportPreview {
+  job: ImportJob;
+  summary: {
+    totalRows: number;
+    validRows: number;
+    invalidRows: number;
+    duplicateRows: number;
+    missingRequired: string[];
+    warnings: number;
+    errors: number;
+  };
+  columns: { key: string; label: string }[];
+  rows: {
+    rowNumber: number;
+    valid: boolean;
+    duplicate: boolean;
+    values: Record<string, string | number | boolean | null>;
+    issues: RowIssue[];
+  }[];
+  issues: RowIssue[];
+  issuesTruncated: boolean;
+}
+
+export interface ImportCommitResult {
+  job: ImportJob;
+  outcome: {
+    created: number;
+    updated: number;
+    skipped: number;
+    imported: number;
+    rejected: number;
+    notes: string[];
+  };
+}
+
+export interface ImportUploadResult {
+  job: ImportJob;
+  analysis: WorkbookAnalysis;
+  suggestions: Record<string, Record<string, string | null>>;
+}
+
+export interface ImportErrorRow {
+  id: number;
+  job_id: number;
+  row_number: number;
+  column_name: string | null;
+  field: string | null;
+  value: string | null;
+  severity: string;
+  message: string;
+}

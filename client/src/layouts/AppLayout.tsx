@@ -7,6 +7,7 @@ import {
   Building2,
   ChevronDown,
   FileText,
+  FileUp,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -127,6 +128,21 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ],
       },
       { label: 'Reports', to: '/reports', icon: FileText, roles: ['ADMIN', 'PHARMACIST'] },
+    ],
+  },
+  {
+    section: 'Data',
+    items: [
+      {
+        label: 'Import Center',
+        to: '/import',
+        icon: FileUp,
+        roles: ['ADMIN', 'PHARMACIST'],
+        children: [
+          { label: 'New Import', to: '/import' },
+          { label: 'Import History', to: '/import/history' },
+        ],
+      },
     ],
   },
   {
